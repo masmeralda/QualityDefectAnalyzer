@@ -114,7 +114,7 @@ if input_method == "Создать вручную":
 
 # Редактирование загруженного CSV
 elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded'):
-    st.header("📝 Редактирование данных партий")
+    st.header("📝 Данные производства")
     
     edited_df = st.data_editor(
         st.session_state.editable_df,
@@ -128,7 +128,7 @@ elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded')
     
     col1, col2 = st.columns(2)
     
-    if col1.button("💾 Применить изменения"):
+    if col1.button("💾 Применить для анализа"):
         st.session_state.data = {
             "batch_sizes": edited_df['Размер партии'].tolist(),
             "defect_counts": edited_df['Бракованные детали'].tolist()

@@ -4,46 +4,65 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import chi2, binom, norm
+import tkinter as tk
+from tkinter import filedialog
 
 # Настройка страницы
 st.set_page_config(page_title="Анализ брака в производстве", page_icon="📊", layout="wide")
 st.title("📊 Анализ распределения бракованных деталей")
 
-def ensure_csv_folder():
-    if not os.path.exists("csv-файлы"):
-        os.makedirs("csv-файлы")
+def get_save_path(default_name="defect_data.csv"):
+    """Открывает диалоговое окно для выбора места сохранения файла"""
+    root = tk.Tk()
+    root.withdraw()
+    root.wm_attributes('-topmost', 1)
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".csv",
+        filetypes=[("CSV Files", "*.csv")],
+        initialfile=default_name,
+        title="Выберите место для сохранения файла"
+    )
+    root.destroy()
+    return file_path
 
-# Функция для очистки данных
 def clear_data():
+    """Очищает все данные"""
+    if 'uploaded_file' in st.session_state:
+        st.session_state.uploaded_file.close()
+        del st.session_state.uploaded_file
     st.session_state.pop('data', None)
     st.session_state.pop('editable_df', None)
+    st.session_state.pop('csv_loaded', None)
     st.success("Данные успешно очищены!")
 
+# Боковая панель для ввода данных
 with st.sidebar:
     st.header("⚙️ Ввод данных")
-    input_method = st.radio("Способ ввода:", ["Вручную", "Загрузить CSV"])
+    input_method = st.radio("Способ ввода:", ["Создать вручную", "Открыть CSV"])
 
-    if input_method == "Загрузить CSV":
-        uploaded_file = st.file_uploader("CSV с колонками 'batch_size' и 'defect_count'")
+    if input_method == "Открыть CSV":
+        uploaded_file = st.file_uploader("CSV с колонками 'batch_size' и 'defect_count'", key="file_uploader")
         if uploaded_file:
+            st.session_state.uploaded_file = uploaded_file
             try:
                 df = pd.read_csv(uploaded_file)
                 if "batch_size" in df.columns and "defect_count" in df.columns:
-                    st.session_state.data = {
-                        "batch_sizes": df["batch_size"].tolist(),
-                        "defect_counts": df["defect_count"].tolist()
-                    }
+                    st.session_state.editable_df = pd.DataFrame({
+                        'Размер партии': df["batch_size"],
+                        'Бракованные детали': df["defect_count"]
+                    })
+                    st.session_state.csv_loaded = True
                     st.success("CSV успешно загружен!")
                 else:
                     st.error("Файл должен содержать колонки 'batch_size' и 'defect_count'")
             except Exception as e:
                 st.error(f"Ошибка при чтении: {e}")
     
-    # Добавляем кнопку очистки данных в боковое меню
     if st.button("🧹 Очистить все данные", on_click=clear_data):
-        pass  # Действие выполняется в функции clear_data
+        pass
 
-if input_method == "Вручную":
+# Основной интерфейс
+if input_method == "Создать вручную":
     st.header("📝 Ввод данных партий")
     
     if 'editable_df' not in st.session_state:
@@ -71,7 +90,7 @@ if input_method == "Вручную":
     col1.button("➕ Добавить строку", on_click=add_row)
     col2.button("➖ Удалить последнюю строку", on_click=delete_row)
     
-    if col3.button("💾 Сохранить данные"):
+    if col3.button("💾 Применить"):
         st.session_state.data = {
             "batch_sizes": edited_df['Размер партии'].tolist(),
             "defect_counts": edited_df['Бракованные детали'].tolist()
@@ -79,17 +98,59 @@ if input_method == "Вручную":
         st.success("Данные сохранены для анализа!")
     
     if st.button("📤 Сохранить таблицу в CSV"):
-        ensure_csv_folder()
-        csv_path = os.path.join("csv-файлы", "defect_data.csv")
-        
-        export_df = pd.DataFrame({
-            'batch_size': edited_df['Размер партии'],
-            'defect_count': edited_df['Бракованные детали']
-        })
-        
-        export_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        st.success(f"Файл сохранён в: {csv_path}")
+        try:
+            save_path = get_save_path()
+            if not save_path:
+                st.warning("Сохранение отменено")
+            else:
+                export_df = pd.DataFrame({
+                    'batch_size': edited_df['Размер партии'],
+                    'defect_count': edited_df['Бракованные детали']
+                })
+                export_df.to_csv(save_path, index=False, encoding='utf-8-sig')
+                st.success(f"Файл успешно сохранён: {save_path}")
+        except Exception as e:
+            st.error(f"Ошибка при сохранении: {e}")
 
+# Редактирование загруженного CSV
+elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded'):
+    st.header("📝 Редактирование данных партий")
+    
+    edited_df = st.data_editor(
+        st.session_state.editable_df,
+        num_rows="fixed",
+        use_container_width=True,
+        column_config={
+            "Размер партии": st.column_config.NumberColumn(min_value=1),
+            "Бракованные детали": st.column_config.NumberColumn(min_value=0)
+        }
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    if col1.button("💾 Применить изменения"):
+        st.session_state.data = {
+            "batch_sizes": edited_df['Размер партии'].tolist(),
+            "defect_counts": edited_df['Бракованные детали'].tolist()
+        }
+        st.success("Изменения применены для анализа!")
+    
+    if col2.button("📤 Сохранить как..."):
+        try:
+            save_path = get_save_path()
+            if not save_path:
+                st.warning("Сохранение отменено")
+            else:
+                export_df = pd.DataFrame({
+                    'batch_size': edited_df['Размер партии'],
+                    'defect_count': edited_df['Бракованные детали']
+                })
+                export_df.to_csv(save_path, index=False, encoding='utf-8-sig')
+                st.success(f"Файл успешно сохранён: {save_path}")
+        except Exception as e:
+            st.error(f"Ошибка при сохранении: {e}")
+
+# Анализ и визуализация данных
 if "data" in st.session_state and st.session_state.data["batch_sizes"]:
     batch_sizes = st.session_state.data["batch_sizes"]
     defect_counts = st.session_state.data["defect_counts"]
@@ -181,7 +242,7 @@ if "data" in st.session_state and st.session_state.data["batch_sizes"]:
             - Размеры партий не должны сильно различаться
             """)
 else:
-    if input_method == "Вручную":
+    if input_method == "Создать вручную":
         st.info("ℹ️ Введите данные в таблицу выше и нажмите 'Сохранить данные'")
-    else:
+    elif input_method == "Открыть CSV" and not st.session_state.get('csv_loaded'):
         st.info("ℹ️ Загрузите CSV-файл через боковую панель")

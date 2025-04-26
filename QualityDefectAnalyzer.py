@@ -239,11 +239,17 @@ with st.sidebar:
     input_method = st.radio("Способ ввода:", ["Создать вручную", "Открыть CSV"])
 
     if input_method == "Открыть CSV":
-        uploaded_file = st.file_uploader("CSV с колонками 'batch_size' и 'defect_count'", key="file_uploader")
+        # Используем уникальный ключ для file_uploader, чтобы сбросить его состояние
+        uploaded_file = st.file_uploader("CSV с колонками 'batch_size' и 'defect_count'", 
+                                       key=f"file_uploader_{st.session_state.get('file_uploader_counter', 0)}")
         if uploaded_file:
-            st.session_state.uploaded_file = uploaded_file
             try:
+                # Читаем данные из файла
                 df = pd.read_csv(uploaded_file)
+                
+                # Закрываем файл сразу после чтения
+                uploaded_file.close()
+                
                 if "batch_size" in df.columns and "defect_count" in df.columns:
                     st.session_state.editable_df = pd.DataFrame({
                         'Размер партии': df["batch_size"],
@@ -251,13 +257,23 @@ with st.sidebar:
                     })
                     st.session_state.csv_loaded = True
                     st.success("CSV успешно загружен!")
+                    
+                    # Увеличиваем счетчик, чтобы сбросить состояние file_uploader
+                    st.session_state.file_uploader_counter = st.session_state.get('file_uploader_counter', 0) + 1
+                    
+                    # Очищаем загруженный файл из сессии
+                    if 'uploaded_file' in st.session_state:
+                        del st.session_state.uploaded_file
                 else:
                     st.error("Файл должен содержать колонки 'batch_size' и 'defect_count'")
             except Exception as e:
                 st.error(f"Ошибка при чтении: {e}")
+                if 'uploaded_file' in locals():
+                    uploaded_file.close()
     
     if st.button("🧹 Очистить все данные", on_click=clear_data):
-        pass
+        # При очистке также сбрасываем счетчик загрузки файлов
+        st.session_state.file_uploader_counter = st.session_state.get('file_uploader_counter', 0) + 1
 
 # Основной интерфейс
 if input_method == "Создать вручную":
@@ -314,39 +330,94 @@ if input_method == "Создать вручную":
 elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded'):
     st.header("📝 Редактирование данных производства")
     
-    edited_df = st.data_editor(
-        st.session_state.editable_df,
-        num_rows="fixed",
-        use_container_width=True,
-        column_config={
-            "Размер партии": st.column_config.NumberColumn(min_value=1),
-            "Бракованные детали": st.column_config.NumberColumn(min_value=0)
-        }
-    )
+    # Инициализация состояния
+    if 'edit_mode' not in st.session_state:
+        st.session_state.edit_mode = False
     
-    col1, col2 = st.columns(2)
+    # Функции для управления данными
+    def start_editing():
+        st.session_state.edit_mode = True
+        # Сохраняем текущие данные во временный DataFrame
+        st.session_state.temp_df = st.session_state.editable_df.copy()
     
-    if col1.button("💾 Применить для анализа"):
+    def save_edits():
+        st.session_state.edit_mode = False
+        # Переносим изменения из временного DF в основной
+        st.session_state.editable_df = st.session_state.temp_df.copy()
+        # Обновляем данные для анализа
         st.session_state.data = {
-            "batch_sizes": edited_df['Размер партии'].tolist(),
-            "defect_counts": edited_df['Бракованные детали'].tolist()
+            "batch_sizes": st.session_state.editable_df['Размер партии'].tolist(),
+            "defect_counts": st.session_state.editable_df['Бракованные детали'].tolist()
         }
-        st.success("Изменения применены для анализа!")
     
-    if col2.button("📤 Сохранить как..."):
-        try:
-            save_path = get_save_path()
-            if not save_path:
-                st.warning("Сохранение отменено")
-            else:
-                export_df = pd.DataFrame({
-                    'batch_size': edited_df['Размер партии'],
-                    'defect_count': edited_df['Бракованные детали']
-                })
-                export_df.to_csv(save_path, index=False, encoding='utf-8-sig')
-                st.success(f"Файл успешно сохранён: {save_path}")
-        except Exception as e:
-            st.error(f"Ошибка при сохранении: {e}")
+    def add_row():
+        new_row = pd.DataFrame({'Размер партии': [100], 'Бракованные детали': [0]})
+        st.session_state.temp_df = pd.concat([st.session_state.temp_df, new_row], ignore_index=True)
+    
+    def delete_last_row():
+        if len(st.session_state.temp_df) > 1:
+            st.session_state.temp_df = st.session_state.temp_df.iloc[:-1]
+    
+    # Переключение между режимами
+    if not st.session_state.edit_mode:
+        # Режим просмотра
+        st.dataframe(st.session_state.editable_df, use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        if col1.button("✏️ Редактировать данные", on_click=start_editing):
+            pass
+        
+    else:
+        # Режим редактирования
+        edited_df = st.data_editor(
+            st.session_state.temp_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key='csv_editor',
+            column_config={
+                "Размер партии": st.column_config.NumberColumn(min_value=1),
+                "Бракованные детали": st.column_config.NumberColumn(min_value=0)
+            }
+        )
+        
+        # Сохраняем изменения из редактора
+        st.session_state.temp_df = edited_df
+        
+        # Кнопки управления
+        col1, col2, col3 = st.columns(3)
+        if col1.button("➕ Добавить строку", on_click=add_row):
+            pass
+        
+        if col2.button("➖ Удалить строку", on_click=delete_last_row):
+            pass
+        
+        if col3.button("✔️ Сохранить изменения", on_click=save_edits):
+            st.success("Изменения сохранены!")
+            st.rerun()
+    
+    # Кнопка для применения данных к анализу (вне режима редактирования)
+    if not st.session_state.edit_mode:
+        if st.button("💾 Применить данные для анализа"):
+            st.session_state.data = {
+                "batch_sizes": st.session_state.editable_df['Размер партии'].tolist(),
+                "defect_counts": st.session_state.editable_df['Бракованные детали'].tolist()
+            }
+            st.success("Данные готовы для анализа!")
+        
+        if col2.button("📤 Сохранить как..."):
+            try:
+                save_path = get_save_path()
+                if not save_path:
+                    st.warning("Сохранение отменено")
+                else:
+                    export_df = pd.DataFrame({
+                        'batch_size': st.session_state.editable_df['Размер партии'],
+                        'defect_count': st.session_state.editable_df['Бракованные детали']
+                    })
+                    export_df.to_csv(save_path, index=False, encoding='utf-8-sig')
+                    st.success(f"Файл успешно сохранён: {save_path}")
+            except Exception as e:
+                st.error(f"Ошибка при сохранении: {e}")
 
 # Анализ и визуализация данных
 if "data" in st.session_state and st.session_state.data["batch_sizes"]:

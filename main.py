@@ -78,6 +78,16 @@ if input_method == "Создать вручную":
         if len(st.session_state.editable_df) > 1:
             st.session_state.editable_df = st.session_state.editable_df.iloc[:-1]
     
+    def validate_data(df):
+        """Проверяет, что количество брака не превышает размер партии"""
+        invalid_rows = df[df['Бракованные детали'] > df['Размер партии']]
+        if not invalid_rows.empty:
+            st.error(f"Ошибка в строках: {', '.join(map(str, invalid_rows.index + 1))}. "
+                    f"Количество брака не может превышать размер партии!")
+            return False
+        return True
+
+
     edited_df = st.data_editor(
         st.session_state.editable_df,
         num_rows="dynamic",
@@ -93,11 +103,12 @@ if input_method == "Создать вручную":
     col2.button("➖ Удалить последнюю строку", on_click=delete_row)
     
     if col3.button("💾 Применить"):
-        st.session_state.data = {
-            "batch_sizes": edited_df['Размер партии'].tolist(),
-            "defect_counts": edited_df['Бракованные детали'].tolist()
-        }
-        st.success("Данные сохранены для анализа!")
+        if validate_data(edited_df):
+            st.session_state.data = {
+                "batch_sizes": edited_df['Размер партии'].tolist(),
+                "defect_counts": edited_df['Бракованные детали'].tolist()
+            }
+            st.success("Данные сохранены для анализа!")
     
     if st.button("📤 Сохранить таблицу в CSV"):
         try:
@@ -139,6 +150,15 @@ elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded')
     def delete_last_row():
         if len(st.session_state.temp_df) > 1:
             st.session_state.temp_df = st.session_state.temp_df.iloc[:-1]
+
+    def validate_data(df):
+        """Проверяет, что количество брака не превышает размер партии"""
+        invalid_rows = df[df['Бракованные детали'] > df['Размер партии']]
+        if not invalid_rows.empty:
+            st.error(f"Ошибка в строках: {', '.join(map(str, invalid_rows.index + 1))}. "
+                    f"Количество брака не может превышать размер партии!")
+            return False
+        return True
     
     if not st.session_state.edit_mode:
         st.dataframe(st.session_state.editable_df, use_container_width=True)
@@ -168,17 +188,20 @@ elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded')
         if col2.button("➖ Удалить строку", on_click=delete_last_row):
             pass
         
-        if col3.button("✔️ Сохранить изменения", on_click=save_edits):
-            st.success("Изменения сохранены!")
-            st.rerun()
+        if col3.button("✔️ Сохранить изменения"):
+            if validate_data(st.session_state.temp_df):
+                save_edits()
+                st.success("Изменения сохранены!")
+                st.rerun()
     
     if not st.session_state.edit_mode:
         if st.button("💾 Применить данные для анализа"):
-            st.session_state.data = {
-                "batch_sizes": st.session_state.editable_df['Размер партии'].tolist(),
-                "defect_counts": st.session_state.editable_df['Бракованные детали'].tolist()
-            }
-            st.success("Данные готовы для анализа!")
+            if validate_data(st.session_state.editable_df):
+                st.session_state.data = {
+                    "batch_sizes": st.session_state.editable_df['Размер партии'].tolist(),
+                    "defect_counts": st.session_state.editable_df['Бракованные детали'].tolist()
+                }
+                st.success("Данные готовы для анализа!")
         
         if col2.button("📤 Сохранить как..."):
             try:

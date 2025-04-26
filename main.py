@@ -4,30 +4,21 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import chi2, binom, norm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
+from config import PAGE_CONFIG, setup_fonts
 from utils.file_handling import get_save_path, clear_data
 from utils.pdf_generator import create_pdf_report
+from utils.validation import validate_data
 
-# Настройка страницы
-st.set_page_config(page_title="Анализ брака в производстве", page_icon="📊", layout="wide")
+
+# Настройка страницы из конфига
+st.set_page_config(**PAGE_CONFIG)
 st.title("📊 Анализ распределения бракованных деталей")
 
-# Регистрация шрифтов с поддержкой кириллицы
-try:
-    font_path_regular = os.path.join("fonts", "DejaVuSans.ttf")
-    font_path_bold = os.path.join("fonts", "DejaVuSans-Bold.ttf")
-    
-    pdfmetrics.registerFont(TTFont('DejaVuSans', font_path_regular))
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', font_path_bold))
-    
-    FONT_NAME = 'DejaVuSans'
-    FONT_BOLD = 'DejaVuSans-Bold'
-except Exception as e:
-    FONT_NAME = 'Helvetica'
-    FONT_BOLD = 'Helvetica-Bold'
-    st.warning(f"Не удалось загрузить шрифты. Русский текст в PDF может отображаться некорректно. Ошибка: {e}")
+# Работа со шрифтами из конфига
+FONT_NAME, FONT_BOLD = setup_fonts()
+if FONT_NAME == 'Helvetica':
+    st.warning("Не удалось загрузить кастомные шрифты. Используются стандартные.")
 
 # Боковая панель для ввода данных
 with st.sidebar:
@@ -78,21 +69,6 @@ if input_method == "Создать вручную":
         if len(st.session_state.editable_df) > 1:
             st.session_state.editable_df = st.session_state.editable_df.iloc[:-1]
     
-    def validate_data(df):
-        # Проверка на пустые значения
-        if df.isnull().values.any():
-            st.error("Ошибка: В таблице есть пустые значения!")
-            return False
-
-        """Проверяет, что количество брака не превышает размер партии"""
-        invalid_rows = df[df['Бракованные детали'] > df['Размер партии']]
-        if not invalid_rows.empty:
-            st.error(f"Ошибка в строках: {', '.join(map(str, invalid_rows.index + 1))}. "
-                    f"Количество брака не может превышать размер партии!")
-            return False
-        return True
-
-
     edited_df = st.data_editor(
         st.session_state.editable_df,
         num_rows="dynamic",
@@ -155,36 +131,6 @@ elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded')
     def delete_last_row():
         if len(st.session_state.temp_df) > 1:
             st.session_state.temp_df = st.session_state.temp_df.iloc[:-1]
-
-    def validate_data(df):
-    
-        is_valid = True
-        
-        # Проверка на пустые значения
-        empty_rows = df[df.isnull().any(axis=1)]
-        if not empty_rows.empty:
-            st.error(f"Ошибка: Пустые значения в строках: {', '.join(map(str, empty_rows.index + 1))}")
-            is_valid = False
-        
-        # Проверка на отрицательные значения размера партии
-        invalid_size_rows = df[df['Размер партии'] <= 0]
-        if not invalid_size_rows.empty:
-            st.error(f"Ошибка: Неположительный размер партии в строках: {', '.join(map(str, invalid_size_rows.index + 1))}")
-            is_valid = False
-            
-        # Проверка на отрицательные значения брака
-        invalid_defect_rows = df[df['Бракованные детали'] < 0]
-        if not invalid_defect_rows.empty:
-            st.error(f"Ошибка: Отрицательное количество брака в строках: {', '.join(map(str, invalid_defect_rows.index + 1))}")
-            is_valid = False
-        
-        # Проверка, что количество брака не превышает размер партии
-        invalid_ratio_rows = df[df['Бракованные детали'] > df['Размер партии']]
-        if not invalid_ratio_rows.empty:
-            st.error(f"Ошибка: Брака больше чем деталей в строках: {', '.join(map(str, invalid_ratio_rows.index + 1))}")
-            is_valid = False
-        
-        return is_valid
     
     if not st.session_state.edit_mode:
         st.dataframe(st.session_state.editable_df, use_container_width=True)

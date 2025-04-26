@@ -79,6 +79,11 @@ if input_method == "Создать вручную":
             st.session_state.editable_df = st.session_state.editable_df.iloc[:-1]
     
     def validate_data(df):
+        # Проверка на пустые значения
+        if df.isnull().values.any():
+            st.error("Ошибка: В таблице есть пустые значения!")
+            return False
+
         """Проверяет, что количество брака не превышает размер партии"""
         invalid_rows = df[df['Бракованные детали'] > df['Размер партии']]
         if not invalid_rows.empty:
@@ -126,7 +131,7 @@ if input_method == "Создать вручную":
             st.error(f"Ошибка при сохранении: {e}")
 
 elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded'):
-    st.header("📝 Редактирование данных производства")
+    st.header("📝 Данные производства")
     
     if 'edit_mode' not in st.session_state:
         st.session_state.edit_mode = False
@@ -152,13 +157,34 @@ elif input_method == "Открыть CSV" and st.session_state.get('csv_loaded')
             st.session_state.temp_df = st.session_state.temp_df.iloc[:-1]
 
     def validate_data(df):
-        """Проверяет, что количество брака не превышает размер партии"""
-        invalid_rows = df[df['Бракованные детали'] > df['Размер партии']]
-        if not invalid_rows.empty:
-            st.error(f"Ошибка в строках: {', '.join(map(str, invalid_rows.index + 1))}. "
-                    f"Количество брака не может превышать размер партии!")
-            return False
-        return True
+    
+        is_valid = True
+        
+        # Проверка на пустые значения
+        empty_rows = df[df.isnull().any(axis=1)]
+        if not empty_rows.empty:
+            st.error(f"Ошибка: Пустые значения в строках: {', '.join(map(str, empty_rows.index + 1))}")
+            is_valid = False
+        
+        # Проверка на отрицательные значения размера партии
+        invalid_size_rows = df[df['Размер партии'] <= 0]
+        if not invalid_size_rows.empty:
+            st.error(f"Ошибка: Неположительный размер партии в строках: {', '.join(map(str, invalid_size_rows.index + 1))}")
+            is_valid = False
+            
+        # Проверка на отрицательные значения брака
+        invalid_defect_rows = df[df['Бракованные детали'] < 0]
+        if not invalid_defect_rows.empty:
+            st.error(f"Ошибка: Отрицательное количество брака в строках: {', '.join(map(str, invalid_defect_rows.index + 1))}")
+            is_valid = False
+        
+        # Проверка, что количество брака не превышает размер партии
+        invalid_ratio_rows = df[df['Бракованные детали'] > df['Размер партии']]
+        if not invalid_ratio_rows.empty:
+            st.error(f"Ошибка: Брака больше чем деталей в строках: {', '.join(map(str, invalid_ratio_rows.index + 1))}")
+            is_valid = False
+        
+        return is_valid
     
     if not st.session_state.edit_mode:
         st.dataframe(st.session_state.editable_df, use_container_width=True)
@@ -319,3 +345,5 @@ else:
         st.info("ℹ️ Введите данные в таблицу выше и нажмите 'Сохранить данные'")
     elif input_method == "Открыть CSV" and not st.session_state.get('csv_loaded'):
         st.info("ℹ️ Загрузите CSV-файл через боковую панель")
+
+

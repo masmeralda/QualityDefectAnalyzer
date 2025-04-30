@@ -3,11 +3,12 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import chi2, binom, norm
+from scipy.stats import chi2, binom, norm, gaussian_kde
 
 from config import PAGE_CONFIG, setup_fonts
 from utils.file_handling import get_save_path, clear_data
 from utils.pdf_generator import create_pdf_report
+from utils.plotting import create_distribution_plot, create_comparison_plot
 from utils.validation import validate_data
 
 
@@ -229,19 +230,7 @@ if "data" in st.session_state and st.session_state.data["batch_sizes"]:
     st.pyplot(fig1)
     plt.close(fig1)
 
-    fig2, ax2 = plt.subplots(figsize=(10, 5))
-    defect_rates = np.array(defect_counts) / np.array(batch_sizes)
-    ax2.hist(defect_rates, bins=15, density=True, alpha=0.6, color='#3b82f6', label='Фактическое распределение')
-    
-    mu = avg_defect_rate
-    sigma = np.sqrt(mu*(1-mu)/np.mean(batch_sizes))
-    x = np.linspace(max(0, mu-3*sigma), min(1, mu+3*sigma), 100)
-    ax2.plot(x, norm.pdf(x, mu, sigma), 'r-', lw=2, label='Теоретическое нормальное приближение')
-    
-    ax2.set_xlabel('Доля бракованных деталей')
-    ax2.set_ylabel('Плотность вероятности')
-    ax2.legend()
-    ax2.grid(True)
+    fig2 = create_distribution_plot(batch_sizes, defect_counts, avg_defect_rate)
     st.pyplot(fig2)
     plt.close(fig2)
 

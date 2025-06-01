@@ -15,6 +15,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from scipy.stats import chi2, binom, norm
 import streamlit as st
+from utils.stats_analysis import perform_chi2_test_normal
+from utils.plotting import create_distribution_plot, create_comparison_plot
 
 def create_pdf_report():
     """Создает PDF отчет с результатами анализа"""
@@ -104,53 +106,35 @@ def create_pdf_report():
         story.append(Image(temp_file, width=400, height=250))
         story.append(Spacer(1, 24))
     
-    fig1, ax1 = plt.subplots(figsize=(10, 5))
-    expected_defects = [s * avg_defect_rate for s in batch_sizes]
-    ax1.bar(range(1, total_batches + 1), defect_counts, 
-           color=["#ef4444" if d > e else "#10b981" for d, e in zip(defect_counts, expected_defects)],
-           alpha=0.8, label="Фактический брак")
-    ax1.plot(range(1, total_batches + 1), expected_defects, "o--", color="#4f46e5", label="Ожидаемый")
-    ax1.set_xlabel("Номер партии")
-    ax1.set_ylabel("Количество бракованных деталей")
-    ax1.set_title("Сравнение фактического и ожидаемого количества брака")
-    ax1.legend()
-    ax1.grid(True, linestyle='--', alpha=0.5)
+   # График сравнения фактического и ожидаемого брака
+    fig1 = create_comparison_plot(batch_sizes, defect_counts, avg_defect_rate)
     add_plot_to_story(fig1, "Сравнение фактического и ожидаемого количества брака")
     plt.close(fig1)
     
-    fig2, ax2 = plt.subplots(figsize=(10, 5))
-    defect_rates = np.array(defect_counts) / np.array(batch_sizes)
-    ax2.hist(defect_rates, bins=15, density=True, alpha=0.6, color='#3b82f6', label='Фактическое распределение')
-    
-    mu = avg_defect_rate
-    sigma = np.sqrt(mu*(1-mu)/np.mean(batch_sizes))
-    x = np.linspace(max(0, mu-3*sigma), min(1, mu+3*sigma), 100)
-    ax2.plot(x, norm.pdf(x, mu, sigma), 'r-', lw=2, label='Теоретическое нормальное приближение')
-    
-    ax2.set_xlabel('Доля бракованных деталей')
-    ax2.set_ylabel('Плотность вероятности')
-    ax2.legend()
-    ax2.grid(True)
+    # График распределения долей брака (используем ту же функцию, что и на сайте)
+    fig2 = create_distribution_plot(batch_sizes, defect_counts, avg_defect_rate)
     add_plot_to_story(fig2, "Распределение доли брака")
     plt.close(fig2)
     
-    observed = np.array(defect_counts)
-    expected = np.array(batch_sizes) * avg_defect_rate
-    chi2_stat = ((observed - expected)**2 / expected).sum()
-    df = len(observed) - 2
-    p_value = 1 - chi2.cdf(chi2_stat, df)
     
-    test_result = f"""
-    <b>Результаты проверки гипотезы хи-квадрат:</b><br/>
-    <b>χ² статистика:</b> {chi2_stat:.3f}<br/>
-    <b>Степени свободы:</b> {df}<br/>
-    <b>p-значение:</b> {p_value:.4f}<br/><br/>
-    """
+    result = perform_chi2_test_normal(batch_sizes, defect_counts)
     
-    if p_value < 0.05:
-        test_result += "<b>Вывод:</b> Гипотеза отвергается (p < 0.05) - распределение брака НЕ соответствует биномиальному закону."
+    if result is None:
+        test_result = "<b>Результаты проверки гипотезы:</b><br/>Анализ не выполнен: данные слишком однородны или их недостаточно"
     else:
-        test_result += "<b>Вывод:</b> Гипотеза не отвергается - распределение брака соответствует биномиальному закону."
+        chi2_stat, df, p_value = result
+        
+        test_result = f"""
+        <b>Результаты проверки гипотезы хи-квадрат:</b><br/>
+        <b>χ² статистика:</b> {chi2_stat:.3f}<br/>
+        <b>Степени свободы:</b> {df}<br/>
+        <b>p-значение:</b> {p_value:.4f}<br/><br/>
+        """
+        
+        if p_value < 0.05:
+            test_result += "<b>Вывод:</b> Гипотеза отвергается (p < 0.05) - распределение брака НЕ соответствует биномиальному закону."
+        else:
+            test_result += "<b>Вывод:</b> Гипотеза не отвергается - распределение брака соответствует биномиальному закону."
     
     story.append(Paragraph(test_result, styles['RussianNormal']))
     story.append(Spacer(1, 24))

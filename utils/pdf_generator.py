@@ -109,7 +109,7 @@ def create_pdf_report():
     ax1.bar(range(1, total_batches + 1), defect_counts, 
            color=["#ef4444" if d > e else "#10b981" for d, e in zip(defect_counts, expected_defects)],
            alpha=0.8, label="Фактический брак")
-    ax1.plot(range(1, total_batches + 1), expected_defects, "o--", color="#4f46e5", label="Ожидаемый (биномиальное)")
+    ax1.plot(range(1, total_batches + 1), expected_defects, "o--", color="#4f46e5", label="Ожидаемый")
     ax1.set_xlabel("Номер партии")
     ax1.set_ylabel("Количество бракованных деталей")
     ax1.set_title("Сравнение фактического и ожидаемого количества брака")
